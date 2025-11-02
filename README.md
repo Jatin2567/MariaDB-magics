@@ -33,7 +33,7 @@ mariadb-magics/
 ├── requirements.txt       # All dependencies
 ├── pyproject.toml         # Package metadata & build config
 └── README.md              # You’re here
-
+```
 ---
 
 ## ⚙️ Installation
