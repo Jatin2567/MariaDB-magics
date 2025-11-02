@@ -17,17 +17,18 @@
 
 ---
 
-## 🧩 Repository Structure
+## 📁 Repository Structure
 
+```text
 mariadb-magics/
 ├── mariadb_magics/
-│   ├── api.py             # Orchestrator for API-based calls
-│   ├── connection.py      # Connection manager for named MariaDB sessions
-│   ├── magics.py          # Registers %mariadb*, line/cell magics
-│   ├── plot.py            # Implements %mariadb_plot for instant charts
-│   ├── temporal.py        # Implements %mariadb_time for date/time analytics
-│   ├── utils.py           # Shared utility functions (execute_and_fetch, logging, etc.)
-│   └── vector.py          # Vector embeddings + similarity search logic
+│   ├── api.py            # Orchestrator for API-based calls
+│   ├── connection.py     # Connection manager for named MariaDB sessions
+│   ├── magics.py         # Registers %mariadb*, line/cell magics
+│   ├── plot.py           # Implements %mariadb_plot for instant charts
+│   ├── temporal.py       # Implements %mariadb_time for date/time analytics
+│   ├── utils.py          # Shared utility functions (execute_and_fetch, logging, etc.)
+│   └── vector.py         # Vector embeddings + similarity search logic
 │
 ├── requirements.txt       # All dependencies
 ├── pyproject.toml         # Package metadata & build config
