@@ -1,4 +1,4 @@
-# 🧠 MariaDB Magics
+# MariaDB Magics
 
 **MariaDB Magics** is a powerful Jupyter extension that brings MariaDB directly into your notebooks — combining SQL, vector search, time utilities, and visualization in one clean, magic-driven interface.
 
@@ -50,7 +50,7 @@ pip install -e .
 
 ---
 
-## 🧠 Usage
+## Usage
 
 ### 1️⃣ Start Jupyter Notebook or Lab
 jupyter notebook
