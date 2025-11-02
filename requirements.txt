@@ -1,0 +1,8 @@
+ipython
+mariadb               
+pandas
+matplotlib
+plotly
+tqdm
+sentence-transformers>=2.2.0  
+scikit-learn                  # for similarity fallback
