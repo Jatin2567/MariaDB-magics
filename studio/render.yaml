@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: mariadb-magics-studio
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: STUDIO_MODE
+        value: demo
