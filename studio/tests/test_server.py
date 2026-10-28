@@ -5,6 +5,7 @@ import server
 class StudioTests(unittest.TestCase):
     def setUp(self):
         self.client=server.app.test_client()
+        server._login_attempts.clear()
     def test_demo_query(self):
         response=self.client.post('/api/query',json={'sql':'SELECT name FROM employees WHERE salary > 120000 ORDER BY salary DESC'})
         self.assertEqual(response.status_code,200)
@@ -18,6 +19,35 @@ class StudioTests(unittest.TestCase):
         with patch.object(server,'TOKEN','test-secret'):
             self.assertEqual(self.client.get('/api/schema').status_code,401)
             self.assertEqual(self.client.get('/api/schema',headers={'Authorization':'Bearer test-secret'}).status_code,200)
+    def test_session_login_and_logout(self):
+        with patch.object(server,'TOKEN','test-secret'):
+            self.assertFalse(self.client.get('/api/access').json['authenticated'])
+            self.assertEqual(self.client.post('/api/login',json={'token':'wrong'}).status_code,401)
+            self.assertEqual(self.client.get('/api/schema').status_code,401)
+            response=self.client.post('/api/login',json={'token':'test-secret'})
+            self.assertEqual(response.status_code,200)
+            self.assertIn('HttpOnly',response.headers['Set-Cookie'])
+            self.assertIn('SameSite=Strict',response.headers['Set-Cookie'])
+            self.assertEqual(self.client.get('/api/schema').status_code,200)
+            self.assertTrue(self.client.get('/api/access').json['authenticated'])
+            self.assertEqual(self.client.post('/api/logout',json={}).status_code,200)
+            self.assertEqual(self.client.get('/api/schema').status_code,401)
+    def test_cross_origin_login_rejected(self):
+        self.assertEqual(self.client.post('/api/login',json={'token':''},headers={'Origin':'https://elsewhere.example'}).status_code,403)
+    def test_render_https_origin(self):
+        with patch.dict(server.os.environ,{'RENDER':'true'}):
+            self.assertEqual(self.client.post('/api/login',json={'token':''},headers={'Origin':'https://localhost'}).status_code,200)
+    def test_login_throttled(self):
+        with patch.object(server,'TOKEN','secret'):
+            for _ in range(10):
+                self.assertEqual(self.client.post('/api/login',json={'token':'wrong'}).status_code,401)
+            self.assertEqual(self.client.post('/api/login',json={'token':'wrong'}).status_code,429)
+    def test_public_guide_when_locked(self):
+        with patch.object(server,'TOKEN','secret'):
+            for path in ['/docs','/static/setup.sql']:
+                with self.client.get(path) as response:
+                    self.assertEqual(response.status_code,200)
+            self.assertEqual(self.client.get('/api/schema').status_code,401)
     def test_demo_does_not_fake_native_features(self):
         for endpoint in ['vector','temporal']:
             self.assertEqual(self.client.post('/api/'+endpoint,json={}).status_code,400)

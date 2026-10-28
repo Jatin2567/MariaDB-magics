@@ -1,0 +1,36 @@
+# A free local database on your own computer. Requires Docker Desktop / Engine.
+# This stack does not make your database reachable by the public Render service.
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: ${LOCAL_ROOT_PASSWORD:?Set LOCAL_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: magics
+      MARIADB_USER: studio_reader
+      MARIADB_PASSWORD: ${LOCAL_DB_PASSWORD:?Set LOCAL_DB_PASSWORD in .env}
+    volumes:
+      - studio-db:/var/lib/mysql
+      - ./static/setup.sql:/docker-entrypoint-initdb.d/01-setup.sql:ro
+      - ./local-permissions.sql:/docker-entrypoint-initdb.d/02-permissions.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  studio:
+    build: .
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      STUDIO_MODE: live
+      STUDIO_TOKEN: ${STUDIO_TOKEN:?Set STUDIO_TOKEN in .env}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: magics
+      DB_USER: studio_reader
+      DB_PASSWORD: ${LOCAL_DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  studio-db:

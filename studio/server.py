@@ -1,14 +1,19 @@
 """MariaDB Magics Studio: same-origin, read-only web adapter."""
-import os, re, json, math, sqlite3, time, secrets
-from datetime import datetime
+import os, re, json, math, sqlite3, time, secrets, hashlib, threading
+from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 
 app = Flask(__name__, static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 65536
 MODE = os.getenv('STUDIO_MODE', 'demo')
 TOKEN = os.getenv('STUDIO_TOKEN', '')
+app.secret_key = os.getenv('SESSION_SECRET') or hashlib.sha256(('magics-session:'+TOKEN).encode()).hexdigest()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
+                  SESSION_COOKIE_SECURE=os.getenv('RENDER')=='true' or os.getenv('COOKIE_SECURE')=='1')
+_login_attempts = {}
+_login_lock = threading.Lock()
 if MODE not in ('demo', 'live'):
     raise RuntimeError('STUDIO_MODE must be demo or live')
 if MODE == 'live' and len(TOKEN) < 24:
@@ -38,7 +43,7 @@ def connection():
         import mariadb
         config = dict(host=os.getenv('DB_HOST','db'), port=int(os.getenv('DB_PORT','3306')), user=os.getenv('DB_USER','studio_reader'), password=os.environ['DB_PASSWORD'], database=os.getenv('DB_NAME','magics'), connect_timeout=5)
         if os.getenv('DB_SSL_CA'):
-            config.update(ssl_ca=os.environ['DB_SSL_CA'], ssl_verify_cert=True)
+            config.update(ssl=True, ssl_ca=os.environ['DB_SSL_CA'], ssl_verify_cert=True)
         conn = mariadb.connect(**config)
         cur = conn.cursor()
         cur.execute('SET SESSION max_statement_time=10')
@@ -56,17 +61,56 @@ def execute(sql, params=()):
             cur.execute(sql, params)
             columns = [d[0] for d in cur.description] if cur.description else []
             rows = cur.fetchmany(501) if columns else []
-            return dict(columns=columns, rows=[[v.hex() if isinstance(v,bytes) else v for v in row] for row in rows[:500]], truncated=len(rows)>500)
+            def value(v):
+                if isinstance(v,datetime):
+                    return v.isoformat(sep=' ',timespec='microseconds')
+                if isinstance(v,date):
+                    return v.isoformat()
+                return v.hex() if isinstance(v,bytes) else v
+            return dict(columns=columns, rows=[[value(v) for v in row] for row in rows[:500]], truncated=len(rows)>500)
         finally:
             cur.close()
 
 @app.before_request
 def protect():
-    if request.path.startswith('/api/') and TOKEN:
-        if not secrets.compare_digest(request.headers.get('Authorization',''), 'Bearer '+TOKEN):
-            return jsonify(error='Enter the workspace access token in Connection settings.'), 401
     if request.method == 'POST' and not request.is_json:
         return jsonify(error='JSON content required'), 415
+    if request.method == 'POST' and request.headers.get('Origin'):
+        expected_origin=('https' if os.getenv('RENDER')=='true' else request.scheme)+'://'+request.host
+        if request.headers['Origin'].rstrip('/') != expected_origin:
+            return jsonify(error='Use this workspace directly to submit requests.'), 403
+    if request.path.startswith('/api/') and request.path not in ('/api/access','/api/login') and TOKEN:
+        if not session.get('unlocked') and not secrets.compare_digest(request.headers.get('Authorization','').encode(), ('Bearer '+TOKEN).encode()):
+            return jsonify(error='Sign in with your workspace access token to use the live database.'), 401
+
+@app.get('/api/access')
+def access():
+    return jsonify(mode=MODE, requires_login=bool(TOKEN), authenticated=bool(session.get('unlocked')))
+
+@app.post('/api/login')
+def login():
+    # In-memory protection suits this single-process, shared workspace deployment.
+    now=time.monotonic()
+    address=request.remote_addr or 'unknown'
+    with _login_lock:
+        for key in list(_login_attempts):
+            if now-_login_attempts[key][0]>60:
+                del _login_attempts[key]
+        start,count=_login_attempts.get(address,(now,0))
+        if count>=10:
+            return jsonify(error='Too many attempts. Wait one minute and try again.'),429
+        _login_attempts[address]=(start,count+1)
+    supplied=(request.json or {}).get('token','')
+    if not isinstance(supplied,str) or (TOKEN and not secrets.compare_digest(supplied.encode(),TOKEN.encode())):
+        return jsonify(error='That workspace access token is not correct.'),401
+    session.clear()
+    session['unlocked']=True
+    return jsonify(ok=True)
+
+@app.post('/api/logout')
+def logout():
+    session.clear()
+    return jsonify(ok=True)
 
 @app.after_request
 def headers(response):
@@ -79,6 +123,10 @@ def headers(response):
 @app.get('/')
 def home():
     return send_from_directory(app.static_folder, 'index.html')
+
+@app.get('/docs')
+def docs():
+    return send_from_directory(app.static_folder, 'docs.html')
 
 @app.get('/healthz')
 def health():

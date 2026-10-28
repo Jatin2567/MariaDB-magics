@@ -28,7 +28,9 @@ For live mode also install requirements.txt (the official MariaDB connector requ
 
 ## Connect a real database
 
-Copy `.env.example` to `.env` for Docker Compose. Set STUDIO_MODE=live, STUDIO_TOKEN to a random string of at least 24 characters, and DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD. Generate a token with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Enter it using Connection in the UI. Database credentials never enter the browser. Local Python startup reads environment variables, not .env files.
+The deployed [setup guide](https://mariadb-magics-studio.onrender.com/docs) covers the MariaDB Cloud Free Developer Tier, Render TLS/allowlist settings, and an entirely local MariaDB 11.8 Docker stack (`compose.live.yaml`). Downloadable `static/setup.sql` creates the tutorial vector and system-versioned tables in a fresh schema. Run it once as the schema owner using an admin SQL client; Studio is read-only.
+
+Copy `.env.example` to `.env` for Docker Compose. Set STUDIO_MODE=live, STUDIO_TOKEN to a random string of at least 24 characters, and DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD. Generate a token with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Sign in using Connection in the UI; sign out ends the session. HttpOnly, SameSite=Strict cookies hold the signed session, with Secure enabled on Render. The default signing key changes when STUDIO_TOKEN rotates; optionally configure SESSION_SECRET independently. Bearer tokens remain supported for API clients. The single-process login limiter permits 10 attempts per minute per observed client address. Database credentials never enter the browser. Local Python startup reads environment variables, not .env files.
 
 Use a dedicated database account granted SELECT only on the chosen schema. Do not grant FILE, EXECUTE, administrative privileges, or access to unrelated schemas. The SQL prefix filter is a convenience guard, not a SQL security parser. Read-only transactions and database permissions enforce access. Connections are isolated per request, closed afterward, and limited to 10 seconds per statement. Results are capped at 500 rows. CTEs and writes are intentionally outside this read-only editor's scope.
 
@@ -65,5 +67,7 @@ node --check static/app.js
 ```
 
 Unit tests cover real demo SQL execution, write/multi-statement rejection, authentication, schema, explicit demo limitations, and parameterized temporal/vector query generation. Mocked live-query tests are not live MariaDB integration tests. Docker build and live database validation require a running Docker engine and a configured MariaDB instance.
+
+The setup-guide update was also verified against an isolated MariaDB 12.0.2 server: tutorial SQL, native cosine ranking (IDs 1, 2, 3), historical salary 100000 versus current 125000, microsecond timestamp round-trip, and session login/logout using a SELECT-only account. This does not verify an individual MariaDB Cloud account or its default server version. The local Compose file validates; its complete Docker stack was not run because the Docker engine was stopped.
 
 MIT license; original attribution retained in LICENSE.
